@@ -13,6 +13,9 @@
 <div class="content">
     {% if page.show_title %}
         <h1 class="title">{{ page.title }}</h1>
+        <p>
+            <i>by {{page.author}} on {{page.date()}}</i>
+        </p>
     {% endif %}
     
     {# breadcrumbs #}
@@ -33,7 +36,8 @@
     </div>
     
     <div class="container">
-        {% if page.owner==session['user_id'] or session['is_admin'] %}
+    {# see if user can edit this page #}
+        {% if page.author.id == session['user_id'] or session['is_admin']%}
             <a href="{{ url_for('page_edit', page_id=page.id)}}">Edit</a>
         {% endif %}
     </div>

@@ -1,10 +1,14 @@
-import datetime
+import time, datetime
 from flask import (Flask, flash, g, session, request,
                       redirect, render_template, abort, url_for)
 
 from utils import admin_required, get_object_or_404, login_required, strip_tags
 
 from peewee import *
+############### INITIAL DEFAULTS #############
+# once running, you can override these defaults
+default_admin = 'admin'
+default_admin_password = 'adminme'
 brand = "FlaskBlog"
 about = """
 <p>FlaskBlog is an open-source microBlog.
@@ -17,68 +21,95 @@ PeeWee ORM by Charles Leifer. In addition, we use the Bulma CSS framework under 
 We look forward to community involvement to add more to the project.
 </p>
 """
+###############
 app = Flask(__name__)
 app.secret_key = '&#*OnNyywiy1$#@'
 
 DB = SqliteDatabase("blog.db")
 
+############# OUR MODELS ############
 class BaseModel(Model):
   created_on = DateTimeField(default=datetime.datetime.now)
   class Meta:
     database = DB
     
+class BlogMeta(BaseModel):
+  """meta information about our blog"""
+  brand = CharField(unique=True)
+  about = TextField()
+    
 class User(BaseModel):
+  """Basic user model"""
   username = CharField(unique=True)
   displayname = CharField(default='')
   password = CharField()
   is_admin = BooleanField(default=False)
+  ## User model frills, often unused
+  #avatar_url = CharField(default="")
+  #bio = TextField(default="")
   
   def __repr__(self):
     return self.username
     
   def authenticate(self, password):
+    """provides basic authentication against a password"""
+    # use bcrypt to make it sort of secure
     if password == self.password:
       return True
     return False
     
 class Page(BaseModel):
+  """The Page model (each blog entry is a page)"""
+  # required fields: author, title, content
   author = ForeignKeyField(User, related_name='author')
   title = CharField()
   content = TextField()
+  # fields with defaults: slug, is_published, show_title, show_nav, show_sidebar
+  #slug = TextField(default="") # in case user wants a better url (as a feature page, etc.)
+  # boolean type fields for page visibility and presentation options
   is_published = BooleanField(default=True)
   show_title = BooleanField(default=True)
   show_nav = BooleanField(default=True)
+  # not implemented yet
   show_sidebar = BooleanField(default=True)
   
   
-  def snippet(self):
+  def snippet(self, length=100):
+    """returns a snippet of a particular length (default=100) without tags"""
     snippet_length = len(self.content)
-    if snippet_length > 100:
-      snippet_length = 100
+    if snippet_length > length:
+      snippet_length = length
     return strip_tags(self.content[0:snippet_length])
+  
+  def date(self, fmt='%B %d, %Y'):
+    """returns a nicely formatted date, can override format if you want"""
+    return self.created_on.strftime(fmt)
     
   def __repr__(self):
+    """returns a string representation"""
     return self.title
   
   class Meta:
     order_by = ('-created_on', 'author')
     
-class BlogMeta(BaseModel):
-  brand = CharField(unique=True)
-  about = TextField()
+
+  
+################### END MODELS #########################
   
 def init_database():
+  """initialize the database... safe creation of tables in case we're starting out"""
   DB.connect()
   print("creating tables")
   DB.create_tables([BlogMeta, User, Page], safe=True)
   try:
     # here is some initial data to get you going.
     BlogMeta.create(brand=brand, about=about)
-    User.create(username='admin',password='adminme',is_admin=True)
+    User.create(username=default_admin,password=default_admin_password,is_admin=True)
   except Exception as e:
     pass
 
   DB.close()
+
   
 @app.before_request
 def before_request():
@@ -193,7 +224,7 @@ def admin():
       blog.save()
       return redirect(url_for('admin'))
     else:
-      flash("Blog Brand and About CANNOT be BLANK.", category="danger")
+      flash("Blog Brand field and About field need a value.", category="danger")
       
   return render_template('admin.html', blog=blog)
 

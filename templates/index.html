@@ -19,7 +19,7 @@
         <div class="card-content">
         <h3 class="subtitle"><a href="{{ url_for('page_view',page_id=page.id)}}">{{ page.title }}</a></h3>
           <p class="is-small">
-            <i>by {{ page.author }} <small>on {{ page.created_on }}</small></i>
+            <i>by {{ page.author }} <small>on {{ page.date() }}</small></i>
           </p>
           <p>
             {{ page.snippet() }} <a href="{{ url_for('page_view',page_id=page.id)}}"> more...</a>

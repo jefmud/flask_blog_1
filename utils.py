@@ -1,7 +1,9 @@
 
 from functools import wraps
+import os
 from HTMLParser import HTMLParser
-from flask import abort, redirect, request, session, url_for
+from flask import abort, redirect, request, session, url_for, jsonify
+from playhouse.shortcuts import model_to_dict, dict_to_model
 
 def get_object_or_404(cls, object_id):
   try:
@@ -25,6 +27,32 @@ def admin_required(f):
     return f(*args, **kwargs)
   return decorated_function
 
+
+def query_to_dict(query):
+  """return a python dict from a query"""
+  qdict = []
+  for item in query:
+    qdict.append(model_to_dict(item))
+  return qdict
+    
+def query_to_json(query):
+  """return a JSON representation of a query"""
+  return jsonify(query_to_dict(query))
+
+def query_to_file(query, filename):
+  """save query to file, basic name handling collision (PATH MUST EXIST)"""
+  json_data = query_to_json(query)
+  wfile = filename
+  i = 0
+  while True:
+    if not(os.path.isfile(wfile)):
+      break
+    i += 1
+    wfile = "{}.{}".format(filename)
+    
+  with open(wfile,"w") as fp:
+    fp.write(json_data)
+    
 
 class MLStripper(HTMLParser):
   def __init__(self):
