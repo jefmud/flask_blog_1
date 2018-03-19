@@ -1,0 +1,23 @@
+{% extends 'layout.html' %}
+{% from 'navbar.html' import render_navbar %}
+{% from 'macros.html' import field, ckeditor %}
+{% block title %}{{g.brand}} Admininstration{% endblock %}
+{% block navbar %}
+{{ render_navbar() }}
+{% endblock %}
+{% block content %}
+    <div class="content">
+    <h2 class="subtitle">Blog Meta Information</h2>
+    <form method="POST">
+        {{ field(name="brand", label="Blog Brand Title", value=blog.brand) }}
+        
+        {{ ckeditor(name="about", label="About (goes on main page)", value=blog.about) }}
+        <input type="submit" class="button is-primary">
+    </form>
+    <h3 class="subtitle">Other Administration Tasks</h3>
+    <ul>
+        <li><a href="{{ url_for("admin_users") }}">Users</a></li>
+        <li><a href="{{ url_for("admin_pages") }}">Pages</a></li>
+    </ul>
+    </div>
+{% endblock %}

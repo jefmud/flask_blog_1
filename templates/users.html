@@ -1,0 +1,27 @@
+{% extends 'layout.html' %}
+{% from 'navbar.html' import render_navbar %}
+{% block title %}Administer Users{% endblock %}
+{% block navbar %}
+{{ render_navbar() }}
+{% endblock %}
+{% block content %}
+
+<a href="{{ url_for('user_add')}}">
+<span class="icon has-text-danger is-large">
+  <i class="fas fa-plus"></i>
+</span>
+&nbsp Add User
+</a>
+
+<table class="table is-bordered">
+<tr>
+<th>Username</th>
+<th>Display Name</th>
+</tr>
+<tbody>
+{% for user in users %}
+     <tr><td><a href="{{ url_for('user_edit', user_id=user.id)}}">{{ user }}</a></td><td>{{ user.displayname }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+{% endblock %}

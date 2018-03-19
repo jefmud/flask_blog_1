@@ -1,0 +1,38 @@
+
+{% extends 'layout.html' %}
+{% from 'navbar.html' import render_navbar %}
+{% block title %}{{ blog.brand }}{% endblock %}
+{% block navbar %}
+{{ render_navbar() }}
+{% endblock %}
+{% block content %}
+<div class="content">
+    <h1 class="title">Welcome to {{ blog.brand }} </h1>
+    {{ blog.about|safe }}
+    
+    {% if pages %}
+      <h3 class="subtitle">Recent Articles</h3>
+      <div class="content">
+      {% for page in pages %}
+      
+      <div class="card">
+        <div class="card-content">
+        <h3 class="subtitle"><a href="{{ url_for('page_view',page_id=page.id)}}">{{ page.title }}</a></h3>
+          <p class="is-small">
+            <i>by {{ page.author }} <small>on {{ page.created_on }}</small></i>
+          </p>
+          <p>
+            {{ page.snippet() }} <a href="{{ url_for('page_view',page_id=page.id)}}"> more...</a>
+          </p>
+          
+        </div>
+     </div>
+     <div><p>&nbsp</p></div>
+      
+      {% endfor %}
+      </div>
+    {% else %}
+      <p>Get busy and create some content!</p>
+    {% endif %}
+</div>
+{% endblock %}
