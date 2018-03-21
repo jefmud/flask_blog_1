@@ -7,6 +7,13 @@
 {% endblock %}
 {% block content %}
     <div class="content">
+    <h3 class="subtitle">Administration Areas</h3>
+    <ul>
+        <li><a href="{{ url_for("admin_users") }}">Users</a></li>
+        <li><a href="{{ url_for("admin_pages") }}">Pages</a></li>
+        <li><a href="{{ url_for("admin_files") }}">Files</a></li>
+    </ul>
+    <hr>
     <h2 class="subtitle">Blog Meta Information</h2>
     <form method="POST">
         {{ field(name="brand", label="Blog Brand Title", value=blog.brand) }}
@@ -14,10 +21,5 @@
         {{ ckeditor(name="about", label="About (goes on main page)", value=blog.about) }}
         <input type="submit" class="button is-primary">
     </form>
-    <h3 class="subtitle">Other Administration Tasks</h3>
-    <ul>
-        <li><a href="{{ url_for("admin_users") }}">Users</a></li>
-        <li><a href="{{ url_for("admin_pages") }}">Pages</a></li>
-    </ul>
     </div>
 {% endblock %}

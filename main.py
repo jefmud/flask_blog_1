@@ -1,16 +1,15 @@
-import time, datetime, sys, getpass
-from flask import (Flask, flash, g, session, request,
+import time, datetime, sys, getpass, io, os
+from flask import (Flask, flash, g, session, request, send_from_directory,
                       redirect, render_template, abort, url_for)
 
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 
 from utils import admin_required, get_object_or_404, login_required, strip_tags, query_to_file, slugify
 
 from peewee import *
 ############### INITIAL DEFAULTS #############
 # once running, you can override these defaults
-default_admin = 'admin'
-default_admin_password = 'adminme'
 default_brand = "FlaskBlog"
 default_about = """
 <p>FlaskBlog is an open-source microBlog.
@@ -23,9 +22,12 @@ PeeWee ORM by Charles Leifer. In addition, we use the Bulma CSS framework under 
 We look forward to community involvement to add more to the project.
 </p>
 """
+UPLOAD_FOLDER = '/uploads'
+ALLOWED_EXTENSIONS = set(['txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'])
 ###############
-app = Flask(__name__)
+app = Flask(__name__, static_url_path=UPLOAD_FOLDER)
 app.secret_key = '&#*OnNyywiy1$#@'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 DB = SqliteDatabase("blog.db")
 
@@ -125,6 +127,16 @@ class Page(BaseModel):
     order_by = ('-created_on', 'author')
     
 
+class File(BaseModel):
+  title = CharField()
+  filename = CharField(unique=True)
+  owner = ForeignKeyField(User, related_name="owner")
+  
+  def __repr__(self):
+    return self.title
+  
+  def url(self):
+    return url_for('file_uploads', filename=self.filename)
   
 ################### END MODELS #########################
   
@@ -153,7 +165,7 @@ def init_database(args=[]):
     sys.exit(0)
     
   print("creating tables")
-  DB.create_tables([BlogMeta, User, Page], safe=True)
+  DB.create_tables([BlogMeta, User, Page, File], safe=True)
   
   if '--createadmin' in args:
     username = raw_input("Enter admin username: ")
@@ -179,8 +191,6 @@ def before_request():
   g.db.connect()
   blog = get_blog_meta()
   
-  
-
   g.brand = blog.brand  
   g.user_id = session.get('user_id')
   g.username = session.get('username')
@@ -217,6 +227,41 @@ def login():
     
   return render_template('login.html')
 
+
+@app.route('/upload', methods=['GET', 'POST'])
+@login_required
+def file_upload():
+  if request.method == 'POST':
+    # check if the post request has the file part
+    if 'file' not in request.files:
+      flash('No file part')
+      return redirect(request.url)
+    file = request.files['file']
+    # if user does not select file, browser also
+    # submit a empty part without filename
+    if file.filename == '':
+      flash('No selected file')
+      return redirect(request.url)
+    if file and allowed_file(file.filename):
+      filename = secure_filename(file.filename)
+      file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+      File.create(title=filename, filename=filename, owner=session['user_id'])
+      return redirect(url_for('file_uploads',
+                                    filename=filename))
+  return '''
+    <!doctype html>
+    <title>Upload new File</title>
+    <h1>Upload new File</h1>
+    <form method=post enctype=multipart/form-data>
+      <p><input type=file name=file>
+         <input type=submit value=Upload>
+    </form>
+    '''
+@app.route('/uploads/<filename>')
+def file_uploads(filename):
+  return send_from_directory(app.config['UPLOAD_FOLDER'],
+                               filename)
+
 @app.route('/logout')
 def logout():
   session.clear()
@@ -225,6 +270,9 @@ def logout():
 
 @app.route('/index')
 def index():
+  s = request.args.get('s')
+  if s:
+    return redirect( url_for('search', s=s) )  
   if len(User.select()) == 0:
     return redirect(url_for('admin_first_use'))  
   pages = Page.select()
@@ -270,6 +318,9 @@ def user_delete(user_id, hard_delete=False):
   
 @app.route('/page/<int:page_id>')
 def page_view(page_id):
+  s = request.args.get('s')
+  if s:
+    return redirect( url_for('search', s=s) )  
   page = get_object_or_404(Page, page_id)
   if page.is_published:
     return render_template('page_view.html', page=page)
@@ -413,6 +464,12 @@ def admin_pages():
   pages = Page.select()
   return render_template('admin_pages.html', pages=pages)
 
+@app.route('/admin/files')
+@admin_required
+def admin_files():
+  files = File.select()
+  return render_template('admin_files.html', files=files)
+
 @app.route('/admin/firstuse', methods=('GET', 'POST'))
 def admin_first_use():
   """this is only a first-use area"""
@@ -444,7 +501,7 @@ def admin_first_use():
 @app.route("/search")
 def search():
   search_term = request.args.get('s')
-  pages = models.Page.select().where(Page.content.contains(search_term))
+  pages = Page.select().where(Page.content.contains(search_term))
   return render_template('search.html', pages=pages, search_term=search_term)
 
 # this is the general route "catchment"
