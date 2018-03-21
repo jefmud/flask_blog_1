@@ -1,16 +1,18 @@
-import time, datetime
+import time, datetime, sys, getpass
 from flask import (Flask, flash, g, session, request,
                       redirect, render_template, abort, url_for)
 
-from utils import admin_required, get_object_or_404, login_required, strip_tags
+from werkzeug.security import generate_password_hash, check_password_hash
+
+from utils import admin_required, get_object_or_404, login_required, strip_tags, query_to_file, slugify
 
 from peewee import *
 ############### INITIAL DEFAULTS #############
 # once running, you can override these defaults
 default_admin = 'admin'
 default_admin_password = 'adminme'
-brand = "FlaskBlog"
-about = """
+default_brand = "FlaskBlog"
+default_about = """
 <p>FlaskBlog is an open-source microBlog.
 It is our hope it will be useful to community members that have learned or are
 discovering the excellence of Python and the Flask web framework.
@@ -42,21 +44,45 @@ class User(BaseModel):
   """Basic user model"""
   username = CharField(unique=True)
   displayname = CharField(default='')
+  email = CharField(default='')
   password = CharField()
   is_admin = BooleanField(default=False)
+  is_active = BooleanField(default=True)
   ## User model frills, often unused
-  #avatar_url = CharField(default="")
-  #bio = TextField(default="")
+  avatar_url = CharField(default="")
+  bio = TextField(default="")
   
+  def display_name(self):
+    if self.displayname:
+      return self.displayname
+    return self.username
+  
+  def authenticate(self, password):
+    """provides basic authentication against a password"""
+    # enforce hashing (werkzeug) to make it sort of secure
+    if check_password_hash(self.password, password):
+      return True
+    
+    return False  
+  
+  def password_hash(self):
+    # manual hash operation.
+    self.password = generate_password_hash(self.password)  
+  
+  @classmethod
+  def create_user(cls, username, password, email="", displayname="", is_admin=False, is_active=True, avatar_url="", bio=""):
+    hashed_pw = generate_password_hash(password) # enforce password hashing (werkzueg)
+    try:
+      with DB.transaction():    
+        cls.create(username=username, password=hashed_pw, email=email, displayname=displayname,
+                   is_admin=is_admin, is_active=is_active, avatar_url=avatar_url, bio=bio)
+    except IntegrityError:
+      raise ValueError('username already exists')      
+    
   def __repr__(self):
     return self.username
     
-  def authenticate(self, password):
-    """provides basic authentication against a password"""
-    # use bcrypt to make it sort of secure
-    if password == self.password:
-      return True
-    return False
+  
     
 class Page(BaseModel):
   """The Page model (each blog entry is a page)"""
@@ -65,7 +91,7 @@ class Page(BaseModel):
   title = CharField()
   content = TextField()
   # fields with defaults: slug, is_published, show_title, show_nav, show_sidebar
-  #slug = TextField(default="") # in case user wants a better url (as a feature page, etc.)
+  slug = TextField(default="") # in case user wants a better url (as a feature page, etc.)
   # boolean type fields for page visibility and presentation options
   is_published = BooleanField(default=True)
   show_title = BooleanField(default=True)
@@ -73,6 +99,12 @@ class Page(BaseModel):
   # not implemented yet
   show_sidebar = BooleanField(default=True)
   
+  
+  def url(self):
+    """return page slug or url for generic page view"""
+    if self.slug:
+      return self.slug
+    return url_for('page_view',page_id=self.id)
   
   def snippet(self, length=100):
     """returns a snippet of a particular length (default=100) without tags"""
@@ -96,26 +128,59 @@ class Page(BaseModel):
   
 ################### END MODELS #########################
   
-def init_database():
+def init_database(args=[]):
   """initialize the database... safe creation of tables in case we're starting out"""
+  
   DB.connect()
+  
+  if '--drop' in args and 'users' in args:
+    resp = raw_input("DELETE all USERS? (type DELETE) to confirm: ")
+    if resp == "DELETE":
+      DB.drop_tables([User])
+      print("USERS dropped")
+    else:
+      print("Cancelled")
+    sys.exit(0)    
+    DB.drop_tables([User])
+    
+  if '--drop' in args and 'pages' in args:
+    resp = raw_input("DELETE all PAGES? (type DELETE) to confirm: ")
+    if resp == "DELETE":
+      DB.drop_tables([Page])
+      print("PAGES dropped")
+    else:
+      print("Cancelled")
+    sys.exit(0)
+    
   print("creating tables")
   DB.create_tables([BlogMeta, User, Page], safe=True)
-  try:
-    # here is some initial data to get you going.
-    BlogMeta.create(brand=brand, about=about)
-    User.create(username=default_admin,password=default_admin_password,is_admin=True)
-  except Exception as e:
-    pass
-
+  
+  if '--createadmin' in args:
+    username = raw_input("Enter admin username: ")
+    password = getpass.getpass()
+    User.create_user(username=username, password=password, is_admin=True)
+    print("admin user created")
+    sys.exit(0)
+    
+  
   DB.close()
 
-  
+def get_blog_meta():
+  blog = BlogMeta.select()
+  if len(blog):
+    blog = blog[0]
+  else:
+    blog = BlogMeta.create(brand=default_brand, about=default_about)
+  return blog
+
 @app.before_request
 def before_request():
   g.db = DB
   g.db.connect()
-  blog = BlogMeta.select()[0]
+  blog = get_blog_meta()
+  
+  
+
   g.brand = blog.brand  
   g.user_id = session.get('user_id')
   g.username = session.get('username')
@@ -127,22 +192,28 @@ def after_request(response):
 
 @app.route('/login', methods=('GET','POST'))
 def login():
+  error = None
   if request.method == 'POST':
     username = request.form.get('username')
     password = request.form.get('password')
     try:
       user = User.get(User.username==username)
-      if user.authenticate(password):
+      if user.authenticate(password) and user.is_active:
         session['is_admin'] = user.is_admin
         session['is_authenticated'] = True
         session['username'] = username
         session['user_id'] = user.id
         flash("Welcome.  You are logged in now.")
         return redirect(url_for('index'))
+      if not(user.is_active):
+        error = "Username is deactivated, please contact an admin to be reinstated"
     except:
       pass
-      
-    flash("Username and/or password is incorrect.", category="danger")
+    
+    if error:
+      flash(error, category="danger")
+    else:
+      flash("Username and/or password is incorrect.", category="danger")
     
   return render_template('login.html')
 
@@ -152,15 +223,51 @@ def logout():
   flash("You are logged out.", category="warning")
   return redirect(url_for('index'))
 
-@app.route('/')
+@app.route('/index')
 def index():
+  if len(User.select()) == 0:
+    return redirect(url_for('admin_first_use'))  
   pages = Page.select()
   blog = BlogMeta.select()[0]
   if len(pages) > 5:
     # limit the front page to 5 pages.
     pages = pages[0:5]
   return render_template('index.html', pages=pages, blog=blog)
+
+def fix_page_ownership():
+  pages = Page.select()
+  for page in pages:
+    print page.author
     
+@app.route('/user_delete/<int:user_id>')
+@app.route('/user_delete/<int:user_id>/<hard_delete>')
+@admin_required
+def user_delete(user_id, hard_delete=False):
+  edit_url = url_for('user_edit', user_id=user_id)
+  user = get_object_or_404(User, user_id)
+  if user.id != session.get('user_id'):
+    if hard_delete:
+      # reassign all pages to admin who is deleting
+      pages = Page.select().where(Page.author==user.id)
+      for page in pages:
+        page.author = session.get('user_id')
+        page.save()
+      user.delete_instance()
+      flash("User fully deleted", category="primary")
+    else:
+      user.is_active = False
+      user.save()
+      flash("User deactivated, but still present in database", category="primary")
+  else:
+    flash("CANNOT DELETE/DEACTIVATE an actively logged in account.", category="danger")
+  
+  # redirect to caller or index page if we deleted on an edit view
+  if request.referrer == None or edit_url in request.referrer:
+    return redirect(url_for('index'))
+  else:
+    return redirect(request.referrer)  
+  
+  
 @app.route('/page/<int:page_id>')
 def page_view(page_id):
   page = get_object_or_404(Page, page_id)
@@ -174,13 +281,28 @@ def page_view(page_id):
 def page_create():
   return redirect(url_for('page_edit'))
 
+@app.route('/page_delete/<int:page_id>')
+@login_required
+def page_delete(page_id):
+  edit_url = url_for('page_edit', page_id=page_id)
+  page = get_object_or_404(Page, page_id)
+  if page.author.id == session['user_id']  or session['is_admin']:
+    page.delete_instance()
+    flash('Page deleted', category="success")
+    print request.referrer
+    if request.referrer == None or edit_url in request.referrer:
+      return redirect(url_for('index'))
+    else:
+      return redirect(request.referrer)
+  
+
 @app.route('/page_edit', methods=('GET','POST'))
 @app.route('/page_edit/<int:page_id>', methods=('GET','POST'))
 @login_required
 def page_edit(page_id=None):
   if page_id==None:
     try:
-      page = Page(author=g.user_id)
+      page = Page(author=g.user_id, content="")
     except:
       flash("Problems creating a new page", category="danger")
       return redirect(url_for('index'))
@@ -189,6 +311,7 @@ def page_edit(page_id=None):
     
   if request.method == 'POST':
     title = request.form.get('title','')
+    slug = request.form.get('slug','')
     author = g.user_id
     content = request.form.get('content','')
     is_published = request.form.get('is_published') == 'on'
@@ -197,6 +320,7 @@ def page_edit(page_id=None):
     show_nav = request.form.get('show_nav') == 'on'
     if len(title) > 0 and len(content) > 0:
       page.title = title
+      page.slug = slugify(slug)
       page.content = content
       page.is_published = is_published
       page.show_sidebar = show_sidebar
@@ -228,6 +352,18 @@ def admin():
       
   return render_template('admin.html', blog=blog)
 
+
+@app.route('/admin/export/<model>/<filename>')
+@admin_required
+def export_model(model, filename):
+  if model == 'user':
+    query = User.select()
+  else:
+    query = Page.select()
+  query_to_file(query, filename)
+  return "Done"
+    
+  
 @app.route('/admin/users', methods=('GET','POST'))
 @admin_required
 def admin_users():
@@ -251,12 +387,17 @@ def user_edit(user_id=None):
   if request.method == 'POST':
     username = request.form.get('username')
     displayname = request.form.get('displayname')
+    email = request.form.get('email')
     password = request.form.get('password')
+    is_active = request.form.get('is_active') == 'on'
     is_admin = request.form.get('is_admin') == 'on'
     if len(username) > 0 and len(password) > 0:
       user.username = username
       user.displayname = displayname
-      user.password = password
+      if user.password != password:
+        user.password = password
+        user.password_hash()
+      user.is_active = is_active
       user.is_admin = is_admin
       user.save()
       flash("User information changed", category="success")
@@ -269,8 +410,62 @@ def user_edit(user_id=None):
 @app.route('/admin/pages', methods=('GET','POST'))
 @admin_required
 def admin_pages():
-  return "todo"
+  pages = Page.select()
+  return render_template('admin_pages.html', pages=pages)
+
+@app.route('/admin/firstuse', methods=('GET', 'POST'))
+def admin_first_use():
+  """this is only a first-use area"""
+  # this route should only work on empty user table
+  if len(User.select()) > 0:
+    abort(403) # forbidden
+  
+  errors = False
+  if request.method == 'POST':
+    username = request.form.get('username')
+    password = request.form.get('password')
+    confirm = request.form.get('confirm')
+    if len(username) == 0:
+      errors = True
+      flash("Username must be NON-NULL", category="danger")
+    if len(password) == 0:
+      errors = True
+      flash("Password must be NON-NULL", category="danger")
+    if password != confirm:
+      errors = True
+      flash("Password and Confirm must match", category="danger")
+    if not(errors):
+      User.create_user(username=username, password=password, is_admin=True)
+      return redirect(url_for('login'))
+    
+  return render_template('first_use.html')
+
+
+@app.route("/search")
+def search():
+  search_term = request.args.get('s')
+  pages = models.Page.select().where(Page.content.contains(search_term))
+  return render_template('search.html', pages=pages, search_term=search_term)
+
+# this is the general route "catchment"
+@app.route("/")
+@app.route("/<path:path>")
+def site(path=None):
+  s = request.args.get('s')
+  if s:
+    return redirect( url_for('search', s=s) )
+
+  if path is None:
+    return redirect(url_for("index"))
+  
+  page = Page.select().where(Page.slug==path)
+  if len(page) > 0:
+    page = page[0]
+  else:
+    abort(404)
+    
+  return render_template('page_view.html', page=page)   
 
 if __name__ == '__main__':
-  init_database()
+  init_database(sys.argv)
   app.run(host='0.0.0.0', port=5000, debug=False)

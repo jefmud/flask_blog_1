@@ -14,7 +14,7 @@
     {% if page.show_title %}
         <h1 class="title">{{ page.title }}</h1>
         <p>
-            <i>by {{page.author}} on {{page.date()}}</i>
+            <i>by {{page.author.display_name() }} on {{page.date()}}</i>
         </p>
     {% endif %}
     

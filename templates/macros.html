@@ -1,6 +1,6 @@
-{% macro ckeditor(name, label, value="") %}
+{% macro ckeditor(name, label, value="", modifier="") %}
 {# the venerable ckeditor from a CDN delivery url #}
-<div class="field">
+<div class="field {{ modifier }}">
   <label class="label">{{ label }}</label>
   <div class="control">
     <script src="https://cdn.ckeditor.com/4.6.2/standard/ckeditor.js"></script>
@@ -45,10 +45,10 @@
 </div>
 {% endmacro %}
 
-{% macro input(name, label, value="", placeholder="", size="", category="") %}
+{% macro input(name, label, value="", placeholder="", size="", category="", modifier="") %}
 {# size = (is-small, is-medium, is-large) #}
 {# category = (is-danger, is-warning, is-info, is-success, is-default) #}
-<div class="field">
+<div class="field {{ modifier }}">
   <label class="label {{category}} {{ size }}">{{ label }}</label>
   <div class="control">
     <input class="input {{ size }}" type="text" placeholder="{{ placeholder }}" name="{{ name }}" {% if value %}value="{{ value }}"{% endif %}>
@@ -58,6 +58,17 @@
 
 {% macro checkbox(name, label, checked=True) %}
 <div class="field">
+  <div class="control">
+    <label class="checkbox">
+      <input type="checkbox" name="{{ name }}" {% if checked %}checked="checked"{% endif %} />
+      {{ label }}
+    </label>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro checkbox_h(name, label, checked=True) %}
+<div class="field is-horizontal">
   <div class="control">
     <label class="checkbox">
       <input type="checkbox" name="{{ name }}" {% if checked %}checked="checked"{% endif %} />

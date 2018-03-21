@@ -10,8 +10,10 @@
 <h2 class="title">Edit {{ user.username }}</h2>
 <form method="post">
     {{ field('username', 'Username', value=user.username) }}
-    {{ field('displayname', 'Display Name', value=user.displayname) }}
+    {{ field('displayname', 'Display Name (optional)', value=user.displayname) }}
+    {{ field('email', 'Email (optional)', value=user.displayname) }}
     {{ field('password', 'Password', value=user.password) }}
+    {{ checkbox('is_active', 'Is Active', checked=user.is_active) }}
     {{ checkbox('is_admin', 'Is Administrator', checked=user.is_admin) }}
     <input type="submit" class="button is-primary">
 </form>

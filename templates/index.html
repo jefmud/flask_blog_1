@@ -17,9 +17,9 @@
       
       <div class="card">
         <div class="card-content">
-        <h3 class="subtitle"><a href="{{ url_for('page_view',page_id=page.id)}}">{{ page.title }}</a></h3>
+        <h3 class="subtitle"><a href="{{ page.url() }}">{{ page.title }}</a></h3>
           <p class="is-small">
-            <i>by {{ page.author }} <small>on {{ page.date() }}</small></i>
+            <i>by {{ page.author.display_name() }} <small>on {{ page.date() }}</small></i>
           </p>
           <p>
             {{ page.snippet() }} <a href="{{ url_for('page_view',page_id=page.id)}}"> more...</a>

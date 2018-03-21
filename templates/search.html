@@ -1,0 +1,17 @@
+{% extends 'layout.html' %}
+{% from 'navbar.html' import render_navbar %}
+{% block title %}{{ g.brand }}{% endblock %}
+{% block navbar %}
+    {# navigation #}
+    {{ render_navbar() }}
+{% endblock %}
+{% block content %}
+<div class="content">
+    <h1 class="title">Search results for "{{ search_term }}"</h1>
+    <ol>
+        {% for page in pages %}
+            <li><a href="{{ page.slug() }}">{{ page.title }}</a></li>
+        {% endfor %}
+    </ol>
+</div>
+{% endblock %}

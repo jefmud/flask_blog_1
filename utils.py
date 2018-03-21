@@ -1,6 +1,6 @@
 
 from functools import wraps
-import os
+import os, json, re
 from HTMLParser import HTMLParser
 from flask import abort, redirect, request, session, url_for, jsonify
 from playhouse.shortcuts import model_to_dict, dict_to_model
@@ -41,17 +41,17 @@ def query_to_json(query):
 
 def query_to_file(query, filename):
   """save query to file, basic name handling collision (PATH MUST EXIST)"""
-  json_data = query_to_json(query)
+  data = query_to_dict(query)
   wfile = filename
   i = 0
   while True:
     if not(os.path.isfile(wfile)):
       break
     i += 1
-    wfile = "{}.{}".format(filename)
+    wfile = "{}.{}".format(filename, i)
     
   with open(wfile,"w") as fp:
-    fp.write(json_data)
+    fp.write(json.dumps(data, indent=4, sort_keys=True, default=str))
     
 
 class MLStripper(HTMLParser):
@@ -66,4 +66,58 @@ class MLStripper(HTMLParser):
 def strip_tags(html):
   s = MLStripper()
   s.feed(html)
-  return s.get_data()  
+  return s.get_data()
+
+def slugify(s):
+  """
+  Simplifies ugly strings into something URL-friendly.
+  >>> print slugify("[Some] _ Article's Title--")
+  some-articles-title
+  CREDIT - Dolph Mathews (http://blog.dolphm.com/slugify-a-string-in-python/)
+  
+  My modification, allow slashes as pseudo directory
+  """
+
+  # "[Some] _ Article's Title--"
+  # "[some] _ article's title--"
+  s = s.lower()
+
+  # "[some] _ article's_title--"
+  # "[some]___article's_title__"
+  for c in [' ', '-', '.']:
+    s = s.replace(c, '_')
+
+  # "[some]___article's_title__"
+  # "some___articles_title__"
+  #s = re.sub('\W', '', s)
+  s = re.sub('[^a-zA-Z0-9_/]','',s)
+  
+  # multiple slashew replaced with single slash
+  s = re.sub('[/]+', '/', s)
+  
+  # remove leading slash
+  s = re.sub('^/','', s)
+  
+  # remove trailing slash
+  s = re.sub('/$','', s)
+
+  # "some___articles_title__"
+  # "some   articles title  "
+  s = s.replace('_', ' ')
+
+  # "some   articles title  "
+  # "some articles title "
+  s = re.sub('\s+', ' ', s)
+
+  # "some articles title "
+  # "some articles title"
+  s = s.strip()
+
+  # "some articles title"
+  # "some-articles-title"
+  s = s.replace(' ', '-')
+  
+  # a local addition, protects against someone trying to mess with slugless url
+  s = re.sub('^page/','page-',s)
+
+  return s
