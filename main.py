@@ -8,7 +8,8 @@ from werkzeug.utils import secure_filename
 from utils import admin_required, get_object_or_404, login_required, strip_tags, query_to_file, slugify
 
 from peewee import *
-############### INITIAL DEFAULTS #############
+
+############### BLOG META DEFAULTS #############
 # once running, you can override these defaults
 default_brand = "FlaskBlog"
 default_about = """
@@ -22,17 +23,27 @@ PeeWee ORM by Charles Leifer. In addition, we use the Bulma CSS framework under 
 We look forward to community involvement to add more to the project.
 </p>
 """
-UPLOAD_FOLDER = '/uploads'
-ALLOWED_EXTENSIONS = set(['txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'])
 ###############
-app = Flask(__name__, static_url_path=UPLOAD_FOLDER)
+app = Flask(__name__)
 app.secret_key = '&#*OnNyywiy1$#@'
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+HOST = '0.0.0.0'
+PORT = 5000
+DEBUG = False
 
-DB = SqliteDatabase("blog.db")
+### FILE UPLOADS PARAMETERS
+# UPLOAD FOLDER will have to change based on your own needs/deployment scenario
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_FOLDER = os.path.join(BASE_DIR, './uploads')
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+ALLOWED_EXTENSIONS = set(['txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'])
+
+# DBPATH will have to change based on your needs/deployment scenario
+DBPATH = os.path.join(BASE_DIR, 'blog.db')
+DB = SqliteDatabase(DBPATH)
 
 ############# OUR MODELS ############
 class BaseModel(Model):
+  """BaseModel is common parent, so all models have the SAME database and created_on field"""
   created_on = DateTimeField(default=datetime.datetime.now)
   class Meta:
     database = DB
@@ -84,7 +95,6 @@ class User(BaseModel):
   def __repr__(self):
     return self.username
     
-  
     
 class Page(BaseModel):
   """The Page model (each blog entry is a page)"""
@@ -100,7 +110,6 @@ class Page(BaseModel):
   show_nav = BooleanField(default=True)
   # not implemented yet
   show_sidebar = BooleanField(default=True)
-  
   
   def url(self):
     """return page slug or url for generic page view"""
@@ -128,54 +137,70 @@ class Page(BaseModel):
     
 
 class File(BaseModel):
+  """meta information about files that are uploaded by users"""
   title = CharField()
-  filename = CharField(unique=True)
+  filepath = CharField(unique=True)
   owner = ForeignKeyField(User, related_name="owner")
   
   def __repr__(self):
     return self.title
   
   def url(self):
-    return url_for('file_uploads', filename=self.filename)
+    return url_for('file_uploads', path=self.filepath)
+  
+  class Meta:
+    order_by = ('-created_on','title')
   
 ################### END MODELS #########################
   
-def init_database(args=[]):
-  """initialize the database... safe creation of tables in case we're starting out"""
+def initialize(args=[]):
+  """initialize the database... CLI --drop --createadmin
+  safe creation of tables in case we're starting out"""
+  
+  print("INITIALIZATION BEGINS")
   
   DB.connect()
   
-  if '--drop' in args and 'users' in args:
-    resp = raw_input("DELETE all USERS? (type DELETE) to confirm: ")
-    if resp == "DELETE":
-      DB.drop_tables([User])
-      print("USERS dropped")
-    else:
-      print("Cancelled")
-    sys.exit(0)    
-    DB.drop_tables([User])
+  if '--drop' in args:
+    if 'users' in args:
+      resp = raw_input("DELETE all USERS? (type DELETE) to confirm: ")
+      if resp == "DELETE":
+        DB.drop_tables([User])
+        print("USERS dropped")
+      else:
+        print("Cancelled")
+      sys.exit(0)    
     
-  if '--drop' in args and 'pages' in args:
-    resp = raw_input("DELETE all PAGES? (type DELETE) to confirm: ")
-    if resp == "DELETE":
-      DB.drop_tables([Page])
-      print("PAGES dropped")
-    else:
-      print("Cancelled")
-    sys.exit(0)
+    if 'pages' in args:
+      resp = raw_input("DELETE all PAGES? (type DELETE) to confirm: ")
+      if resp == "DELETE":
+        DB.drop_tables([Page])
+        print("PAGES dropped")
+      else:
+        print("Cancelled")
+      sys.exit(0)
     
-  print("creating tables")
-  DB.create_tables([BlogMeta, User, Page, File], safe=True)
+    if 'files' in args:
+      resp = raw_input("DELETE all UPLOADED FILES? (type DELETE) to confirm: ")
+      if resp == "DELETE":
+        DB.drop_tables([File])
+        print("FILES dropped")
+      else:
+        print("Cancelled")
+    sys.exit(0) # exit CLI
   
   if '--createadmin' in args:
     username = raw_input("Enter admin username: ")
     password = getpass.getpass()
     User.create_user(username=username, password=password, is_admin=True)
     print("admin user created")
-    sys.exit(0)
+    sys.exit(0) # EXIT CLI
     
-  
+  # SAFE CREATION OF TABLES
+  DB.create_tables([BlogMeta, User, Page, File], safe=True)  
+
   DB.close()
+  print("INIT COMPLETE")
 
 def get_blog_meta():
   blog = BlogMeta.select()
@@ -227,6 +252,14 @@ def login():
     
   return render_template('login.html')
 
+def allowed_file(filename):
+  return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@app.route('/uploads/<path:path>')
+def file_uploads(path):
+  print("access path={}".format(path))
+  return send_from_directory(app.config['UPLOAD_FOLDER'], path)
 
 @app.route('/upload', methods=['GET', 'POST'])
 @login_required
@@ -244,10 +277,41 @@ def file_upload():
       return redirect(request.url)
     if file and allowed_file(file.filename):
       filename = secure_filename(file.filename)
-      file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-      File.create(title=filename, filename=filename, owner=session['user_id'])
-      return redirect(url_for('file_uploads',
-                                    filename=filename))
+      subfolder = datetime.datetime.strftime(datetime.datetime.now(), "%Y%m/")
+      pathname = os.path.join(app.config['UPLOAD_FOLDER'], subfolder, filename)
+      
+      # handle name collision if needed
+      # filename will add integers at beginning of filename in dotted fashion
+      # hello.jpg => 1.hello.jpg => 2.hello.jpg => ...
+      i=1
+      while os.path.isfile(pathname):
+        parts = filename.split('.')
+        parts.insert(0,str(i))
+        filename = '.'.join(parts)
+        i += 1
+        if i > 100:
+          # probably under attack, so just fail
+          raise ValueError("too many filename collisions, administrator should check this out")
+        
+        pathname = os.path.join(app.config['UPLOAD_FOLDER'], subfolder, filename)
+        
+      try:
+        # ensure directory where we are storing exists, and create it
+        directory = os.path.join(app.config['UPLOAD_FOLDER'], subfolder)
+        if not os.path.exists(directory):
+          os.makedirs(directory)
+        # finally, save the file AND create its resource object in database
+        file.save(pathname)
+        local_filepath = os.path.join(subfolder, filename)
+        File.create(title=filename, filepath=local_filepath, owner=session['user_id'])
+        # TODO, replace with file_view (which should give a resource type view)
+        return redirect(url_for('file_uploads', path=local_filepath))
+      except Exception as e:
+        print(e)
+        flash("Something went wrong here-- please let administrator know", category="danger")
+        raise ValueError("Something went wrong with file upload.")
+      
+  # TODO, replace with fancier upload drag+drop
   return '''
     <!doctype html>
     <title>Upload new File</title>
@@ -257,10 +321,7 @@ def file_upload():
          <input type=submit value=Upload>
     </form>
     '''
-@app.route('/uploads/<filename>')
-def file_uploads(filename):
-  return send_from_directory(app.config['UPLOAD_FOLDER'],
-                               filename)
+
 
 @app.route('/logout')
 def logout():
@@ -340,11 +401,13 @@ def page_delete(page_id):
   if page.author.id == session['user_id']  or session['is_admin']:
     page.delete_instance()
     flash('Page deleted', category="success")
-    print request.referrer
-    if request.referrer == None or edit_url in request.referrer:
-      return redirect(url_for('index'))
-    else:
-      return redirect(request.referrer)
+  else:
+    flash('You are not authorized to remove this page', category='danger')
+  # handle redirect to referer
+  if request.referrer == None or edit_url in request.referrer:
+    return redirect(url_for('index'))
+  else:
+    return redirect(request.referrer)
   
 
 @app.route('/page_edit', methods=('GET','POST'))
@@ -464,6 +527,31 @@ def admin_pages():
   pages = Page.select()
   return render_template('admin_pages.html', pages=pages)
 
+
+@app.route('/file_delete/<int:file_id>')
+@login_required
+def file_delete(file_id):
+  """delete an existing file object and physical file"""
+  f = get_object_or_404(File, file_id)
+  pathname = os.path.join(app.config['UPLOAD_FOLDER'], f.filepath)
+  if f.owner.id == session['user_id'] or session['is_admin']:
+    f.delete_instance()
+    try:
+      os.remove(pathname)
+      flash('File Successfully Deleted', category="success")
+    except:
+      flash("Error: problems removing physical file. Check log for details.", category="warning")
+  else:
+    flash('You are not authorized to remove this file.', category="danger")
+    
+  # handle redirect to referer
+  if request.referrer == None:
+    return redirect(url_for('index'))
+  else:
+    return redirect(request.referrer)  
+  
+    
+  
 @app.route('/admin/files')
 @admin_required
 def admin_files():
@@ -524,5 +612,5 @@ def site(path=None):
   return render_template('page_view.html', page=page)   
 
 if __name__ == '__main__':
-  init_database(sys.argv)
-  app.run(host='0.0.0.0', port=5000, debug=False)
+  initialize(sys.argv)
+  app.run(host=HOST, port=PORT, debug=DEBUG)
