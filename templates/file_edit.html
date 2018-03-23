@@ -1,5 +1,5 @@
 {% extends "layout.html" %}
-{% from 'macros.html' import field, ckeditor, checkbox, checkbox_h, select %}
+{% from 'macros.html' import field, ckeditor, checkbox, select, form_csrf, modal_enclosure %}
 {% from 'navbar.html' import render_navbar %}
 {% block title %}Edit Resource{% endblock %}
 {% block navbar %}
@@ -8,13 +8,23 @@
 {% endblock %}
 {% block content %}
 <div class="content">
+<img src="{{ file.url() }}" width="200" />
+
 <form method="post">
+    {{ form_csrf() }}
     {{ field(name="title", label="File Title", value=file.title) }}
     {{ field(name="owner", label="Owner", value=file.owner) }}
     <p>filepath: {{ file.path }}</p>
     <p><a href="{{ file.url() }}" target="_blank">{{ file.url() }}</a></p>
-    <button type="submit" class="button is-primary">Save</button>
+    <button type="submit" class="button is-info">Save</button>
     <a href="{{ url_for('file_delete', file_id=file.id) }}" type="button" class="button is-danger">Delete</a>
+    
 </form>
+    <p>
+    {% call modal_enclosure(name, button_label="View Modal") %}
+        <img src="{{ file.url() }}" />
+    {% endcall %}
+    </p>
+
 </div>
 {% endblock %}

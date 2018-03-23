@@ -1,6 +1,6 @@
 
 from functools import wraps
-import os, json, re
+import os, json, re, string, random
 from HTMLParser import HTMLParser
 from flask import abort, redirect, request, session, url_for, jsonify
 from playhouse.shortcuts import model_to_dict, dict_to_model
@@ -11,6 +11,20 @@ def get_object_or_404(cls, object_id):
   except:
     abort(404)
     
+def get_object_of_none(cls, object_id):
+  try:
+    return cls.get(cls.id==object_id)
+  except:
+    return None
+  
+def token_generator(size=12, chars=string.ascii_uppercase + string.digits):
+  return ''.join(random.choice(chars) for _ in range(size))
+
+def generate_csrf_token():
+  if '_csrf_token' not in session:
+    session['_csrf_token'] = token_generator()
+  return session['_csrf_token']
+
 def login_required(f):
   @wraps(f)
   def decorated_function(*args, **kwargs):
@@ -75,7 +89,8 @@ def slugify(s):
   some-articles-title
   CREDIT - Dolph Mathews (http://blog.dolphm.com/slugify-a-string-in-python/)
   
-  My modification, allow slashes as pseudo directory
+  My modification, allow slashes as pseudo directory.
+  slug=/people/dirk-gently => people/dirk-gently
   """
 
   # "[Some] _ Article's Title--"

@@ -1,6 +1,6 @@
 {% extends 'layout.html' %}
 {% from 'navbar.html' import render_navbar %}
-{% from 'macros.html' import checkbox %}
+{% from 'macros.html' import checkbox, modal_upload %}
 {% block title %}Administer Files{% endblock %}
 {% block navbar %}
 {{ render_navbar() }}
@@ -39,4 +39,5 @@
 {% endfor %}
 </tbody>
 </table>
+{{ modal_upload("file", "Upload-o-matic", action="/upload") }}
 {% endblock %}

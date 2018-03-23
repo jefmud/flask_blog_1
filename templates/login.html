@@ -1,8 +1,9 @@
 {% extends 'layout.html' %}
-{% from 'macros.html' import field %}
+{% from 'macros.html' import field, form_csrf %}
 {% block content %}
 <h1 class="title">{{ g.brand }} Login</h1>
 <form method="post">
+{{ form_csrf() }}
 {{ field('username', 'Username', category=error, licon="fa-user", help=help) }}
 {{ field('password', 'Password', is_password=True, category=error, help=help) }}
 <input type="submit" class="button is-primary">

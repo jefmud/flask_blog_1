@@ -1,6 +1,6 @@
 {% extends 'layout.html' %}
 {% from 'navbar.html' import render_navbar %}
-{% from 'macros.html' import field, checkbox %}
+{% from 'macros.html' import field, checkbox, form_csrf %}
 {% block title %}Administer User {{ user.username }}{% endblock %}
 {% block navbar %}
 {{ render_navbar() }}
@@ -9,6 +9,7 @@
 <div class="content">
 <h2 class="title">Edit {{ user.username }}</h2>
 <form method="post">
+    {{ form_csrf() }}
     {{ field('username', 'Username', value=user.username) }}
     {{ field('displayname', 'Display Name (optional)', value=user.displayname) }}
     {{ field('email', 'Email (optional)', value=user.displayname) }}

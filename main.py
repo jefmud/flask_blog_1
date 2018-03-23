@@ -5,7 +5,8 @@ from flask import (Flask, flash, g, session, request, send_from_directory,
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
-from utils import admin_required, get_object_or_404, login_required, strip_tags, query_to_file, slugify
+from utils import (login_required, admin_required, get_object_or_404, 
+                   strip_tags, query_to_file, slugify, generate_csrf_token)
 
 from peewee import *
 
@@ -26,6 +27,7 @@ We look forward to community involvement to add more to the project.
 ###############
 app = Flask(__name__)
 app.secret_key = '&#*OnNyywiy1$#@'
+app.jinja_env.globals['csrf_token'] = generate_csrf_token 
 HOST = '0.0.0.0'
 PORT = 5000
 DEBUG = False
@@ -122,7 +124,8 @@ class Page(BaseModel):
     snippet_length = len(self.content)
     if snippet_length > length:
       snippet_length = length
-    return strip_tags(self.content[0:snippet_length])
+    plain_text = strip_tags(self.content)
+    return strip_tags(plain_text[0:snippet_length])
   
   def date(self, fmt='%B %d, %Y'):
     """returns a nicely formatted date, can override format if you want"""
@@ -211,6 +214,8 @@ def initialize(args=[]):
   DB.close()
   print("INIT COMPLETE")
 
+
+
 def get_blog_meta():
   """grabs the blog meta data for branding, etc."""
   blog = BlogMeta.select()
@@ -229,6 +234,16 @@ def before_request():
   g.brand = blog.brand  
   g.user_id = session.get('user_id')
   g.username = session.get('username')
+  
+  # recommended csrf protection
+  if request.method == "POST":
+    if session.get('no_csrf'):
+      # handle temporary csrf override
+      session.pop('no_csrf')
+    else:
+      token = session.pop('_csrf_token', None)
+      if not token or token != request.form.get('_csrf_token'):
+          abort(400)  
   
 @app.after_request
 def after_request(response):
@@ -327,6 +342,7 @@ def file_upload():
         raise ValueError("Something went wrong with file upload.")
       
   # TODO, replace with fancier upload drag+drop
+  session['no_csrf'] = True
   return '''
     <!doctype html>
     <title>Upload new File</title>

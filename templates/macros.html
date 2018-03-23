@@ -1,3 +1,8 @@
+{% macro form_csrf() %}
+  {# insert a csrf_token into a form #}
+  <input name="_csrf_token" type="hidden" value="{{ csrf_token() }}">
+{% endmacro %}
+
 {% macro ckeditor(name, label, value="", modifier="") %}
 {# the venerable ckeditor from a CDN delivery url #}
 <div class="field {{ modifier }}">
@@ -89,11 +94,11 @@
 </div>
 {% endmacro %}
 
-{% macro modal_enclosure(name) %}
+{% macro modal_enclosure(name, button_label="Edit") %}
 {# helper enclosure, see modals below #}
 <!-- Trigger/Open The Modal -->
 <div>
-      <button id="{{name}}Btn" type="button" class="button is-primary"  data-target="#{{name}}Modal">Edit</button>
+      <button id="{{name}}Btn" type="button" class="button is-primary"  data-target="#{{name}}Modal">{{ button_label }}</button>
 </div>
 
 <!-- The Modal -->
@@ -142,6 +147,20 @@ window.onclick = function(event) {
 {% call modal_enclosure(name) %}
   {{ ckeditor(name, label, value="") }}
 {% endcall %}
+{% endmacro %}
+
+{% macro modal_upload(name, label, action="", method="POST") %}
+  {% call modal_enclosure(name, button_label="Upload a File") %}
+    <title>{{ label }}</title>
+    <h1>{{ label }}</h1>
+    <form method="{{ method }}" action="{{ action }}" enctype="multipart/form-data">
+      {{ form_csrf() }}
+      <p>
+        <input type="file" name="{{name}}">
+        <input type="submit" value="Upload">
+      </p>
+    </form>
+  {% endcall %}
 {% endmacro %}
 
 {% macro select(name, label, selections, value="", category="", licon="", size="") %}

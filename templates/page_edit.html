@@ -1,6 +1,6 @@
 
 {% extends "layout.html" %}
-{% from 'macros.html' import field, ckeditor, checkbox, checkbox_h, select %}
+{% from 'macros.html' import field, ckeditor, checkbox, select, form_csrf %}
 {% from 'navbar.html' import render_navbar %}
 {% block title %}Edit page{% endblock %}
 {% block navbar %}
@@ -10,6 +10,7 @@
 {% block content %}
 <div class="content">
 <form method="post">
+    {{ form_csrf() }}
     {{ field(name="title", label="Page Title", value=page.title) }}
     {{ field(name="slug", label="Page Slug (optional)", value=page.slug) }}
     <div class="field is-grouped">

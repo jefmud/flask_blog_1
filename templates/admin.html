@@ -1,6 +1,6 @@
 {% extends 'layout.html' %}
 {% from 'navbar.html' import render_navbar %}
-{% from 'macros.html' import field, ckeditor %}
+{% from 'macros.html' import field, ckeditor, form_csrf %}
 {% block title %}{{g.brand}} Admininstration{% endblock %}
 {% block navbar %}
 {{ render_navbar() }}
@@ -16,6 +16,7 @@
     <hr>
     <h2 class="subtitle">Blog Meta Information</h2>
     <form method="POST">
+        {{ form_csrf() }}
         {{ field(name="brand", label="Blog Brand Title", value=blog.brand) }}
         
         {{ ckeditor(name="about", label="About (goes on main page)", value=blog.about) }}
