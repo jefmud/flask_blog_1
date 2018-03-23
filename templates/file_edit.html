@@ -1,0 +1,20 @@
+{% extends "layout.html" %}
+{% from 'macros.html' import field, ckeditor, checkbox, checkbox_h, select %}
+{% from 'navbar.html' import render_navbar %}
+{% block title %}Edit Resource{% endblock %}
+{% block navbar %}
+    {# navigation #}
+    {{ render_navbar() }}
+{% endblock %}
+{% block content %}
+<div class="content">
+<form method="post">
+    {{ field(name="title", label="File Title", value=file.title) }}
+    {{ field(name="owner", label="Owner", value=file.owner) }}
+    <p>filepath: {{ file.path }}</p>
+    <p><a href="{{ file.url() }}" target="_blank">{{ file.url() }}</a></p>
+    <button type="submit" class="button is-primary">Save</button>
+    <a href="{{ url_for('file_delete', file_id=file.id) }}" type="button" class="button is-danger">Delete</a>
+</form>
+</div>
+{% endblock %}

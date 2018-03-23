@@ -154,19 +154,29 @@ class File(BaseModel):
 ################### END MODELS #########################
   
 def initialize(args=[]):
-  """initialize the database... CLI --drop --createadmin
-  safe creation of tables in case we're starting out"""
+  """initialize the database and CLI (command line args)
+  --drop <table> (valid table aliases are "users", "pages", or "files")
+  --createadmin (creation of an administrator account for initial login)
+  --init (safe creation of tables in case we're starting out.)
+  Some deployment methodologies will make initialize unreachable except from CLI
+  """
   
   print("INITIALIZATION BEGINS")
   
   DB.connect()
+  
+  if '--init' in args or '--initialize' in args:
+    # SAFE CREATION OF TABLES, And exit
+    DB.create_tables([BlogMeta, User, Page, File], safe=True)
+    print("tables created (safe), exiting.")
+    sys.exit(0)
   
   if '--drop' in args:
     if 'users' in args:
       resp = raw_input("DELETE all USERS? (type DELETE) to confirm: ")
       if resp == "DELETE":
         DB.drop_tables([User])
-        print("USERS dropped")
+        print("USERS dropped, exiting.")
       else:
         print("Cancelled")
       sys.exit(0)    
@@ -175,7 +185,7 @@ def initialize(args=[]):
       resp = raw_input("DELETE all PAGES? (type DELETE) to confirm: ")
       if resp == "DELETE":
         DB.drop_tables([Page])
-        print("PAGES dropped")
+        print("PAGES dropped, exiting.")
       else:
         print("Cancelled")
       sys.exit(0)
@@ -184,7 +194,7 @@ def initialize(args=[]):
       resp = raw_input("DELETE all UPLOADED FILES? (type DELETE) to confirm: ")
       if resp == "DELETE":
         DB.drop_tables([File])
-        print("FILES dropped")
+        print("FILES dropped, exiting.")
       else:
         print("Cancelled")
     sys.exit(0) # exit CLI
@@ -193,16 +203,16 @@ def initialize(args=[]):
     username = raw_input("Enter admin username: ")
     password = getpass.getpass()
     User.create_user(username=username, password=password, is_admin=True)
-    print("admin user created")
+    print("admin user created, exiting.")
     sys.exit(0) # EXIT CLI
     
-  # SAFE CREATION OF TABLES
-  DB.create_tables([BlogMeta, User, Page, File], safe=True)  
+  
 
   DB.close()
   print("INIT COMPLETE")
 
 def get_blog_meta():
+  """grabs the blog meta data for branding, etc."""
   blog = BlogMeta.select()
   if len(blog):
     blog = blog[0]
@@ -212,21 +222,23 @@ def get_blog_meta():
 
 @app.before_request
 def before_request():
+  """tasks before request is executed"""
   g.db = DB
   g.db.connect()
   blog = get_blog_meta()
-  
   g.brand = blog.brand  
   g.user_id = session.get('user_id')
   g.username = session.get('username')
   
 @app.after_request
 def after_request(response):
+  """tasks after request is executed"""
   g.db.close()
   return response
 
 @app.route('/login', methods=('GET','POST'))
 def login():
+  """handle basic login"""
   error = None
   if request.method == 'POST':
     username = request.form.get('username')
@@ -253,17 +265,20 @@ def login():
   return render_template('login.html')
 
 def allowed_file(filename):
+  """return True if filename is allowed for upload, False if not allowed"""
   return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 @app.route('/uploads/<path:path>')
 def file_uploads(path):
+  """serve up a file in our uploads"""
   print("access path={}".format(path))
   return send_from_directory(app.config['UPLOAD_FOLDER'], path)
 
 @app.route('/upload', methods=['GET', 'POST'])
 @login_required
 def file_upload():
+  """File upload handling"""
   if request.method == 'POST':
     # check if the post request has the file part
     if 'file' not in request.files:
@@ -283,6 +298,7 @@ def file_upload():
       # handle name collision if needed
       # filename will add integers at beginning of filename in dotted fashion
       # hello.jpg => 1.hello.jpg => 2.hello.jpg => ...
+      # until it finds an unused name
       i=1
       while os.path.isfile(pathname):
         parts = filename.split('.')
@@ -303,9 +319,8 @@ def file_upload():
         # finally, save the file AND create its resource object in database
         file.save(pathname)
         local_filepath = os.path.join(subfolder, filename)
-        File.create(title=filename, filepath=local_filepath, owner=session['user_id'])
-        # TODO, replace with file_view (which should give a resource type view)
-        return redirect(url_for('file_uploads', path=local_filepath))
+        file_object = File.create(title=filename, filepath=local_filepath, owner=session['user_id'])
+        return redirect(url_for('file_edit', file_id=file_object.id))
       except Exception as e:
         print(e)
         flash("Something went wrong here-- please let administrator know", category="danger")
@@ -325,12 +340,17 @@ def file_upload():
 
 @app.route('/logout')
 def logout():
+  """basic logout operations"""
   session.clear()
   flash("You are logged out.", category="warning")
   return redirect(url_for('index'))
 
 @app.route('/index')
 def index():
+  """serve up the home page, and 5 cards of the most recent articles.
+  http://localhost (root of the site is redirected here)
+  You can customize this in the code if you need to.
+  """
   s = request.args.get('s')
   if s:
     return redirect( url_for('search', s=s) )  
@@ -352,6 +372,9 @@ def fix_page_ownership():
 @app.route('/user_delete/<int:user_id>/<hard_delete>')
 @admin_required
 def user_delete(user_id, hard_delete=False):
+  """delete a user. A soft delete only sets the is_active to false
+  a hard_delete signal deletes the user and reassigns all the pages and files to the current ADMIN
+  """
   edit_url = url_for('user_edit', user_id=user_id)
   user = get_object_or_404(User, user_id)
   if user.id != session.get('user_id'):
@@ -379,6 +402,7 @@ def user_delete(user_id, hard_delete=False):
   
 @app.route('/page/<int:page_id>')
 def page_view(page_id):
+  """page view by page.id"""
   s = request.args.get('s')
   if s:
     return redirect( url_for('search', s=s) )  
@@ -391,11 +415,13 @@ def page_view(page_id):
 @app.route('/page_create')
 @login_required
 def page_create():
+  """view creates a page, simply redirects to page_edit view with NO id"""
   return redirect(url_for('page_edit'))
 
 @app.route('/page_delete/<int:page_id>')
 @login_required
 def page_delete(page_id):
+  """view deletes a page and redirects back to referrer or index"""
   edit_url = url_for('page_edit', page_id=page_id)
   page = get_object_or_404(Page, page_id)
   if page.author.id == session['user_id']  or session['is_admin']:
@@ -414,6 +440,7 @@ def page_delete(page_id):
 @app.route('/page_edit/<int:page_id>', methods=('GET','POST'))
 @login_required
 def page_edit(page_id=None):
+  """view edits/creates a page (if called with no page.id)"""
   if page_id==None:
     try:
       page = Page(author=g.user_id, content="")
@@ -452,6 +479,7 @@ def page_edit(page_id=None):
 @app.route('/admin', methods=('GET','POST'), strict_slashes=False)
 @admin_required
 def admin():
+  """view for basic admin tasks"""
   blog = BlogMeta.select()[0]
   if request.method == 'POST':
     brand = request.form.get('brand','')
@@ -470,6 +498,11 @@ def admin():
 @app.route('/admin/export/<model>/<filename>')
 @admin_required
 def export_model(model, filename):
+  """view exports a named model to a JSON file on the physical file system
+  this view should be used with caution since it doesn't put a limitation on filename/location
+  theoretically could overwrite a critical file.  I haven't tried this yet.
+  TODO - the file should be served up (downloaded to user client)
+  """
   if model == 'user':
     query = User.select()
   else:
@@ -481,18 +514,21 @@ def export_model(model, filename):
 @app.route('/admin/users', methods=('GET','POST'))
 @admin_required
 def admin_users():
+  """view for administering users"""
   users = User.select()
   return render_template('users.html', users=users)
 
 @app.route('/admin/user/add', strict_slashes=False)
 @admin_required
 def user_add():
+  """ADMIN-ONLY view to add a user"""
   return redirect(url_for('user_edit'))
 
 @app.route('/admin/user', methods=('GET','POST'), strict_slashes=False)
 @app.route('/admin/user/<int:user_id>', methods=('GET','POST'))
 @admin_required
 def user_edit(user_id=None):
+  """ADMIN-ONLY view to edit a user or create a user if no user_id supplied"""
   if user_id is None:
     user = User()
   else:
@@ -524,6 +560,9 @@ def user_edit(user_id=None):
 @app.route('/admin/pages', methods=('GET','POST'))
 @admin_required
 def admin_pages():
+  """ADMIN-ONLY view to look at all pages.
+  TODO: change view to support non-admin users
+  """
   pages = Page.select()
   return render_template('admin_pages.html', pages=pages)
 
@@ -531,7 +570,7 @@ def admin_pages():
 @app.route('/file_delete/<int:file_id>')
 @login_required
 def file_delete(file_id):
-  """delete an existing file object and physical file"""
+  """view to delete an existing file object and physical file (owned by user)"""
   f = get_object_or_404(File, file_id)
   pathname = os.path.join(app.config['UPLOAD_FOLDER'], f.filepath)
   if f.owner.id == session['user_id'] or session['is_admin']:
@@ -549,18 +588,40 @@ def file_delete(file_id):
     return redirect(url_for('index'))
   else:
     return redirect(request.referrer)  
-  
+
+@app.route('/file_edit/<int:file_id>', methods=['GET','POST'])
+@admin_required
+def file_edit(file_id):
+  """view to allow edit/delete of a File resource"""
+  file = get_object_or_404(File, file_id)
+  if request.method == 'POST':
+    if file.owner.id == session['user_id'] or session['is_admin']:
+      title = request.form.get('title')
+      if title:
+        file.title = title
+        file.save()
+        flash("File information changed", category="success")
+        return redirect(url_for('admin_files'))
+      else:
+        flash('Title must not be blank.', category="danger")
+    else:
+      flash("You are not authorized to edit/delete this object.", category="danger")
+      
+  return render_template('file_edit.html',file=file)
     
   
 @app.route('/admin/files')
 @admin_required
 def admin_files():
+  """ADMIN-ONLY view for all File resources
+  TODO: change this view to support non-admin users
+  """
   files = File.select()
   return render_template('admin_files.html', files=files)
 
 @app.route('/admin/firstuse', methods=('GET', 'POST'))
 def admin_first_use():
-  """this is only a first-use area"""
+  """view for first-use.  This view is triggered by EMPTY User table"""
   # this route should only work on empty user table
   if len(User.select()) > 0:
     abort(403) # forbidden
@@ -588,19 +649,27 @@ def admin_first_use():
 
 @app.route("/search")
 def search():
+  """a general search view
+  TODO: improve search results to be Page cards like index
+  """
   search_term = request.args.get('s')
-  pages = Page.select().where(Page.content.contains(search_term))
+  pages = Page.select().where(Page.content.contains(search_term) | Page.title.contains(search_term) | Page.slug.contains(search_term))
   return render_template('search.html', pages=pages, search_term=search_term)
 
 # this is the general route "catchment"
 @app.route("/")
 @app.route("/<path:path>")
 def site(path=None):
+  """view for pages referenced via their slug
+  If you want to modify what happens when an empty path comes in
+  See below, it is redirected to "index" view.  This can be changed via code below.
+  """
   s = request.args.get('s')
   if s:
     return redirect( url_for('search', s=s) )
 
   if path is None:
+    """modify here to change behavior of the home-index"""
     return redirect(url_for("index"))
   
   page = Page.select().where(Page.slug==path)
@@ -612,5 +681,6 @@ def site(path=None):
   return render_template('page_view.html', page=page)   
 
 if __name__ == '__main__':
+  """launched from the command line, you pass args to initialize, then run the app"""
   initialize(sys.argv)
   app.run(host=HOST, port=PORT, debug=DEBUG)

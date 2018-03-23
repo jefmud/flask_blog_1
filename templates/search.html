@@ -10,7 +10,7 @@
     <h1 class="title">Search results for "{{ search_term }}"</h1>
     <ol>
         {% for page in pages %}
-            <li><a href="{{ page.url() }}">{{ page.title }}</a></li>
+            <li><b><a href="{{ page.url() }}">{{ page.title }}</a></b><p>{{ page.snippet() }}</p></li>
         {% endfor %}
     </ol>
 </div>

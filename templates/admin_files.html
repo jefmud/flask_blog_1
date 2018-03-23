@@ -30,8 +30,9 @@
     <td>{{ file.id }}</td>
     <td>{{ file.title }}</td>
     <td>{{ file.owner }}</td>
-    <td><a href="{{ file.url() }}">{{ file.url() }}</a></td>
+    <td><a href="{{ file.url() }}" target="_blank">{{ file.url() }}</a></td>
     <td>
+      <a href="{{ url_for('file_edit', file_id=file.id) }}" class="button is-small is-primary">Edit</a>&nbsp;&nbsp;&nbsp;
       <a href="{{ url_for('file_delete', file_id=file.id) }}" class="button is-small is-danger">Delete</a>
     </td>
   </tr>
